@@ -9,7 +9,9 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   StyleSheet,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -33,9 +35,19 @@ interface Category {
   __v: number;
 }
 
+interface CategoryForm {
+  name: string;
+  type: 'expense' | 'income';
+}
+
 export default function CategoriesScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isModalVisible, setModalVisible] = useState(false);
+  const [formData, setFormData] = useState<CategoryForm>({
+    name: '',
+    type: 'expense'
+  });
 
   const fetchCategories = async () => {
     try {
@@ -102,6 +114,51 @@ export default function CategoriesScreen() {
     fetchCategories();
   }, []);
 
+  const handleAddCategory = async () => {
+    try {
+      if (!formData.name.trim()) {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Please enter a category name',
+        });
+        return;
+      }
+
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        throw new Error('No auth token found');
+      }
+
+      await apiClient.post('/category/add', formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      // Reset form and close modal
+      setFormData({ name: '', type: 'expense' });
+      setModalVisible(false);
+      
+      // Show success message
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Category added successfully',
+      });
+
+      // Refresh categories list
+      fetchCategories();
+    } catch (error: any) {
+      console.error('Failed to add category:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error.response?.data?.message || 'Failed to add category',
+      });
+    }
+  };
+
   const renderCategory = ({ item }: { item: Category }) => (
     <View style={styles.categoryItem}>
       <ThemedText style={styles.categoryName}>{item.name}</ThemedText>
@@ -149,9 +206,77 @@ export default function CategoriesScreen() {
         refreshing={loading}
       />
 
-      <TouchableOpacity style={styles.addButton} activeOpacity={0.8}>
+      <TouchableOpacity 
+        style={styles.addButton} 
+        activeOpacity={0.8}
+        onPress={() => setModalVisible(true)}
+      >
         <MaterialCommunityIcons name="plus" size={30} color="#fff" />
       </TouchableOpacity>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isModalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ThemedText style={styles.modalTitle}>Add New Category</ThemedText>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Category Name"
+              value={formData.name}
+              onChangeText={(text) => setFormData({ ...formData, name: text })}
+              placeholderTextColor="#666"
+            />
+
+            <View style={styles.typeSelector}>
+              <TouchableOpacity
+                style={[
+                  styles.typeButton,
+                  formData.type === 'expense' && styles.activeType
+                ]}
+                onPress={() => setFormData({ ...formData, type: 'expense' })}
+              >
+                <ThemedText style={styles.typeButtonText}>Expense</ThemedText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.typeButton,
+                  formData.type === 'income' && styles.activeType
+                ]}
+                onPress={() => setFormData({ ...formData, type: 'income' })}
+              >
+                <ThemedText style={styles.typeButtonText}>Income</ThemedText>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.typeSelector, styles.actionButtons]}>
+              <TouchableOpacity
+                style={[styles.typeButton]}
+                onPress={() => {
+                  setModalVisible(false);
+                  setFormData({ name: '', type: 'expense' });
+                }}
+              >
+                <ThemedText style={styles.typeButtonText}>Cancel</ThemedText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.typeButton, { backgroundColor: Colors.light.tint, borderRadius: 8 }]}
+                onPress={handleAddCategory}
+              >
+                <ThemedText style={[styles.typeButtonText, { color: '#fff' }]}>
+                  Add
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -160,6 +285,64 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  input: {
+    backgroundColor: '#f5f5f5',
+    padding: 15,
+    borderRadius: 8,
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  typeSelector: {
+    flexDirection: 'row',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    marginBottom: 20,
+    justifyContent: 'space-between',
+  },
+  typeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    width: '48%', // Make buttons take equal width
+  },
+  actionButtons: {
+    gap: 10, // Add space between action buttons
+  },
+  activeType: {
+    backgroundColor: Colors.light.tint,
+    borderRadius: 8,
+  },
+  typeButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
   loading: {
     justifyContent: 'center',
     alignItems: 'center',
